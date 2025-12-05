@@ -1,30 +1,41 @@
-# LinkedIn Job Scraper with Airflow
+# Multi-Source Job Scraper with Airflow
 
-An automated pipeline that scrapes Data Engineer job listings every 6 hours and sends email notifications via AWS SNS.
+An automated pipeline that scrapes Data Engineer, Analytics Engineer, and Data Scientist job listings every 6 hours from multiple job boards and sends email notifications via AWS SNS.
 
 ## 🚀 Features
 
-- **Automated Scheduling**: Runs every 6 hours using Apache Airflow
-- **Smart Filtering**: Filters jobs for 3-7 years of experience
-- **CSV Export**: Saves timestamped job listings to CSV files
-- **Email Alerts**: Sends notifications via AWS SNS when new jobs are found
+- **Multi-Source Scraping**: JSearch (LinkedIn/Indeed), Adzuna (Monster/CareerBuilder), RemoteOK
+- **Multiple Job Families**: Data Engineer, Analytics Engineer, Data Scientist (ETL focus)
+- **Smart Filtering**: 3-7 years experience, ETL skills for Data Scientists
+- **PST Scheduling**: Runs at 6AM, 12PM, 6PM, 12AM Pacific Time
+- **Email Alerts**: AWS SNS notifications with job breakdown
+- **Modular Architecture**: Separate files for each scraper and job family
 
 ## 📁 Project Structure
 
 ```
 airflow_env/
 ├── dags/
-│   └── linkedin_job_scraper_dag.py    # Main Airflow DAG
+│   └── linkedin_job_scraper_dag.py    # Airflow DAG
 ├── plugins/
-│   ├── job_scraper.py                 # Job scraping logic
-│   ├── csv_exporter.py                # CSV generation
-│   └── sns_notifier.py                # AWS SNS notifications
+│   ├── scrapers/                      # Platform-specific scrapers
+│   │   ├── base_scraper.py           # Abstract base class + utilities
+│   │   ├── jsearch_scraper.py        # LinkedIn, Indeed, Glassdoor, ZipRecruiter
+│   │   ├── adzuna_scraper.py         # Monster, CareerBuilder, SimplyHired
+│   │   └── remoteok_scraper.py       # Remote-focused jobs (no API key)
+│   ├── job_families/                  # Job type handlers
+│   │   ├── data_engineer.py          # Data Engineer positions
+│   │   ├── analytics_engineer.py     # Analytics Engineer positions
+│   │   └── data_scientist_etl.py     # Data Scientist (ETL skills required)
+│   ├── job_scraper.py                # Orchestrator
+│   ├── csv_exporter.py               # CSV generation
+│   └── sns_notifier.py               # AWS SNS notifications
 ├── config/
-│   └── config.py                      # Configuration settings
-├── output/                            # CSV output directory
-├── requirements.txt                   # Python dependencies
-├── .env.example                       # Example environment variables
-└── README.md                          # This file
+│   └── config.py                     # Configuration settings
+├── output/                           # CSV output directory
+├── requirements.txt
+├── .env.example
+└── README.md
 ```
 
 ## 🛠️ Setup
@@ -32,157 +43,158 @@ airflow_env/
 ### 1. Install Dependencies
 
 ```bash
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 ```
 
 ### 2. Configure Environment Variables
 
-Copy the example environment file and fill in your credentials:
-
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` with your values:
+Edit `.env` with your credentials:
 
 ```env
-# AWS Configuration
+# Required
 AWS_REGION=us-east-1
 AWS_ACCESS_KEY_ID=your_access_key
 AWS_SECRET_ACCESS_KEY=your_secret_key
 SNS_TOPIC_ARN=arn:aws:sns:us-east-1:123456789012:job-alerts
-
-# RapidAPI Configuration
 RAPIDAPI_KEY=your_rapidapi_key
+
+# Optional (for additional sources)
+ADZUNA_APP_ID=your_adzuna_app_id
+ADZUNA_APP_KEY=your_adzuna_app_key
+REMOTEOK_ENABLED=true
 ```
 
-### 3. Get RapidAPI Key
+### 3. Get API Keys
 
-1. Go to [JSearch API on RapidAPI](https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch)
-2. Sign up for a free account
-3. Subscribe to the free tier
-4. Copy your API key to `.env`
+| Source | URL | Free Tier |
+|--------|-----|-----------|
+| JSearch | [rapidapi.com/jsearch](https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch) | 500 req/month |
+| Adzuna | [developer.adzuna.com](https://developer.adzuna.com/) | 200 req/month |
+| RemoteOK | No key needed | Unlimited |
 
 ### 4. Set Up AWS SNS
 
-1. **Create SNS Topic**:
-   ```bash
-   aws sns create-topic --name job-alerts
-   ```
-
-2. **Subscribe Your Email**:
-   ```bash
-   aws sns subscribe \
-     --topic-arn arn:aws:sns:us-east-1:YOUR_ACCOUNT_ID:job-alerts \
-     --protocol email \
-     --notification-endpoint your-email@example.com
-   ```
-
-3. **Confirm Subscription**: Check your email and click the confirmation link
-
-### 5. Initialize Airflow
-
 ```bash
-# Set Airflow home
-export AIRFLOW_HOME=$(pwd)
+# Create topic
+aws sns create-topic --name job-alerts
 
-# Initialize database
-airflow db init
-
-# Create admin user
-airflow users create \
-  --username admin \
-  --firstname Admin \
-  --lastname User \
-  --role Admin \
-  --email admin@example.com \
-  --password admin
+# Subscribe your email
+aws sns subscribe \
+  --topic-arn arn:aws:sns:us-east-1:YOUR_ACCOUNT_ID:job-alerts \
+  --protocol email \
+  --notification-endpoint your-email@example.com
 ```
 
-### 6. Start Airflow
+Check your email and confirm the subscription.
+
+### 5. Start Airflow
 
 ```bash
-# Start the scheduler (in one terminal)
-airflow scheduler
-
-# Start the web server (in another terminal)
+export AIRFLOW_HOME=$(pwd)
+airflow db init
+airflow users create --username admin --password admin --role Admin --email admin@example.com --firstname Admin --lastname User
+airflow scheduler &
 airflow webserver --port 8080
 ```
 
-Visit `http://localhost:8080` to access the Airflow UI.
+## 📊 Job Sources
 
-## 📊 Usage
+| Source | Platforms Covered |
+|--------|-------------------|
+| **JSearch** | LinkedIn, Indeed, Glassdoor, ZipRecruiter |
+| **Adzuna** | Monster, CareerBuilder, SimplyHired |
+| **RemoteOK** | Remote-focused positions |
 
-### Run Manually
+## 🎯 Job Families
 
-Trigger the DAG manually via Airflow UI or CLI:
+| Family | Description | Special Filtering |
+|--------|-------------|-------------------|
+| **Data Engineer** | ETL, pipelines, data infrastructure | Experience 3-7 years |
+| **Analytics Engineer** | dbt, Looker, data modeling | Experience 3-7 years |
+| **Data Scientist (ETL)** | ML + data engineering | Must have 2+ ETL skills |
 
-```bash
-airflow dags trigger linkedin_job_scraper
+## ⏰ Schedule
+
+The DAG runs every 6 hours in Pacific Time:
+
+| Time (PST) | Time (UTC) |
+|------------|------------|
+| 6:00 AM | 2:00 PM |
+| 12:00 PM | 8:00 PM |
+| 6:00 PM | 2:00 AM |
+| 12:00 AM | 8:00 AM |
+
+## 📧 Email Notification Sample
+
+```
+📊 Multi-Source Job Scraper Report
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🕐 Scan Time: 2024-01-15 06:00:00 PST
+📍 Location: United States
+
+✅ Total Jobs Found: 85
+
+📊 By Role:
+   • Data Engineer: 40
+   • Analytics Engineer: 25
+   • Data Scientist (ETL): 20
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
-### Test Individual Components
+## 🧪 Testing
 
 ```bash
-# Test job scraper
-python plugins/job_scraper.py
+# Test all imports
+python -c "from plugins.job_scraper import scrape_all_jobs; print('OK')"
 
-# Test CSV exporter
+# Test individual scraper
+python plugins/scrapers/jsearch_scraper.py
+
+# Test job family
+python plugins/job_families/data_engineer.py
+
+# Test CSV export
 python plugins/csv_exporter.py
-
-# Test SNS notifier (requires AWS config)
-python plugins/sns_notifier.py
 ```
 
-## ⚙️ Configuration
+## 🔧 Adding New Scrapers
 
-Edit `config/config.py` to modify:
+Create a new file in `plugins/scrapers/`:
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `JOB_SEARCH_QUERY` | "Data Engineer" | Job title to search |
-| `JOB_LOCATION` | "United States" | Location filter |
-| `EXPERIENCE_MIN_YEARS` | 3 | Minimum years of experience |
-| `EXPERIENCE_MAX_YEARS` | 7 | Maximum years of experience |
-| `SCHEDULE_INTERVAL` | "0 */6 * * *" | Cron expression for scheduling |
-| `MAX_PAGES` | 5 | Maximum pages to fetch |
+```python
+from scrapers.base_scraper import BaseScraper
 
-## 📧 Email Notification Format
-
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📊 LinkedIn Job Scraper Report
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-🕐 Scan Time: 2024-01-15 12:00:00
-🔍 Search Query: Data Engineer in United States
-📋 Experience Filter: 3-7 years
-
-✅ Total Jobs Found: 45
-📁 CSV File: /path/to/output/data_engineer_jobs_20240115_120000.csv
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+class NewPlatformScraper(BaseScraper):
+    def __init__(self):
+        super().__init__("New Platform")
+    
+    def fetch_jobs(self, job_title: str, page: int = 1):
+        # Implement API call
+        pass
 ```
 
-## 🔧 Troubleshooting
+## 🔧 Adding New Job Families
 
-### DAG Not Appearing in Airflow
+Create a new file in `plugins/job_families/`:
 
-1. Check DAG syntax: `python dags/linkedin_job_scraper_dag.py`
-2. Verify AIRFLOW_HOME is set correctly
-3. Check Airflow logs: `airflow dags list`
+```python
+from scrapers.base_scraper import BaseScraper
+from scrapers.jsearch_scraper import JSearchScraper
 
-### API Rate Limits
-
-The free tier of JSearch API has rate limits. If you hit limits:
-- Reduce `MAX_PAGES` in config
-- Increase time between requests
-
-### SNS Notifications Not Working
-
-1. Verify AWS credentials in `.env`
-2. Check SNS topic ARN is correct
-3. Ensure email subscription is confirmed
-4. Check CloudWatch logs for errors
+class NewJobFamily:
+    JOB_TITLE = "MLOps Engineer"
+    
+    def scrape_jobs(self):
+        # Implement scraping logic
+        pass
+```
 
 ## 📝 License
 
