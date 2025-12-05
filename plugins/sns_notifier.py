@@ -2,6 +2,7 @@
 SNS Notifier Module
 
 Sends email notifications via AWS SNS when new jobs are found.
+Enhanced to show breakdown by source and job role.
 """
 import boto3
 from botocore.exceptions import ClientError
@@ -16,19 +17,17 @@ from config.config import (
     AWS_REGION,
     AWS_ACCESS_KEY_ID,
     AWS_SECRET_ACCESS_KEY,
-    SNS_TOPIC_ARN
+    SNS_TOPIC_ARN,
+    JOB_TITLES,
+    JOB_LOCATION,
+    EXPERIENCE_MIN_YEARS,
+    EXPERIENCE_MAX_YEARS
 )
 
 
 def get_sns_client():
-    """
-    Initialize and return an SNS client.
-    
-    Returns:
-        boto3.client: SNS client instance
-    """
+    """Initialize and return an SNS client."""
     if AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY:
-        # Use explicit credentials
         return boto3.client(
             "sns",
             region_name=AWS_REGION,
@@ -36,17 +35,17 @@ def get_sns_client():
             aws_secret_access_key=AWS_SECRET_ACCESS_KEY
         )
     else:
-        # Use default credentials (IAM role, ~/.aws/credentials, etc.)
         return boto3.client("sns", region_name=AWS_REGION)
 
 
-def send_notification(job_count: int, csv_filepath: str) -> bool:
+def send_notification(job_count: int, csv_filepath: str, role_counts: dict = None) -> bool:
     """
     Send an SNS notification about new job listings.
     
     Args:
         job_count: Number of jobs found
         csv_filepath: Path to the generated CSV file
+        role_counts: Optional dict with breakdown by role
         
     Returns:
         bool: True if notification sent successfully, False otherwise
@@ -57,32 +56,58 @@ def send_notification(job_count: int, csv_filepath: str) -> bool:
     
     client = get_sns_client()
     
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S PST")
     
-    subject = f"🔔 Data Engineer Jobs Alert - {job_count} New Listings Found"
+    # Build role breakdown string
+    role_breakdown = ""
+    if role_counts:
+        role_breakdown = "\n".join([f"   • {role}: {count}" for role, count in role_counts.items()])
+    else:
+        role_breakdown = "   (breakdown not available)"
+    
+    subject = f"🔔 Job Alert - {job_count} New Data/Analytics Positions Found"
     
     message = f"""
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📊 LinkedIn Job Scraper Report
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 Multi-Source Job Scraper Report
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 🕐 Scan Time: {timestamp}
-🔍 Search Query: Data Engineer in United States
-📋 Experience Filter: 3-7 years
+📍 Location: {JOB_LOCATION}
+📋 Experience: {EXPERIENCE_MIN_YEARS}-{EXPERIENCE_MAX_YEARS} years
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 Job Titles Searched
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{chr(10).join([f'   • {title}' for title in JOB_TITLES])}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📈 Results Summary
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ✅ Total Jobs Found: {job_count}
-📁 CSV File: {csv_filepath}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 By Role:
+{role_breakdown}
 
-Next scan scheduled in 6 hours.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🌐 Data Sources Used
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   • JSearch (LinkedIn, Indeed, Glassdoor, ZipRecruiter)
+   • Adzuna (Monster, CareerBuilder, SimplyHired)
+   • RemoteOK (Remote-focused positions)
 
-This is an automated message from your LinkedIn Job Scraper.
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📁 CSV File Location
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{csv_filepath}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⏰ Schedule: Every 6 hours (6AM, 12PM, 6PM, 12AM PST)
+📧 This is an automated message from your Job Scraper.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
     
     try:
@@ -97,7 +122,7 @@ This is an automated message from your LinkedIn Job Scraper.
                 },
                 "ScanType": {
                     "DataType": "String",
-                    "StringValue": "Scheduled"
+                    "StringValue": "MultiSource"
                 }
             }
         )
@@ -117,15 +142,7 @@ This is an automated message from your LinkedIn Job Scraper.
 
 
 def create_sns_topic(topic_name: str = "job-alerts") -> str:
-    """
-    Create an SNS topic if it doesn't exist.
-    
-    Args:
-        topic_name: Name for the SNS topic
-        
-    Returns:
-        str: Topic ARN
-    """
+    """Create an SNS topic if it doesn't exist."""
     client = get_sns_client()
     
     try:
@@ -139,16 +156,7 @@ def create_sns_topic(topic_name: str = "job-alerts") -> str:
 
 
 def subscribe_email(topic_arn: str, email: str) -> bool:
-    """
-    Subscribe an email address to an SNS topic.
-    
-    Args:
-        topic_arn: ARN of the SNS topic
-        email: Email address to subscribe
-        
-    Returns:
-        bool: True if subscription created successfully
-    """
+    """Subscribe an email address to an SNS topic."""
     client = get_sns_client()
     
     try:
@@ -165,10 +173,16 @@ def subscribe_email(topic_arn: str, email: str) -> bool:
 
 
 if __name__ == "__main__":
-    # Test notification (will fail without proper AWS config)
+    # Test notification with role breakdown
     print("Testing SNS notification...")
     result = send_notification(
-        job_count=25,
-        csv_filepath="/path/to/test/jobs.csv"
+        job_count=75,
+        csv_filepath="/path/to/test/job_listings_20240115.csv",
+        role_counts={
+            "Data Engineer": 35,
+            "Analytics Engineer": 20,
+            "Data Scientist": 15,
+            "Other": 5
+        }
     )
     print(f"Notification test result: {'Success' if result else 'Failed'}")
