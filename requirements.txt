@@ -1,0 +1,14 @@
+# Apache Airflow and dependencies
+apache-airflow>=2.7.0
+
+# AWS SDK for SNS notifications
+boto3>=1.28.0
+
+# HTTP client for API calls
+requests>=2.31.0
+
+# Data manipulation and CSV export
+pandas>=2.0.0
+
+# Environment variable management
+python-dotenv>=1.0.0
